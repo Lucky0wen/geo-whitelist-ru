@@ -1,0 +1,86 @@
+name: Build Geosite and GeoIP
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.20'
+          cache: false
+
+      - name: Build geosite-ru.dat
+        run: |
+          curl -s -o external_whitelist.txt https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/refs/heads/main/whitelist.txt
+          git clone https://github.com/v2fly/domain-list-community.git compiler
+          cd compiler
+          cp ../external_whitelist.txt data/whitelist-ru
+          go run main.go
+          cp dlc.dat ../geosite-ru.dat
+          cd ..
+          rm -rf compiler external_whitelist.txt
+
+      - name: Build geoip-ru.dat
+        run: |
+          curl -s -o external_whitelist_ip.txt https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/refs/heads/main/ipwhitelist.txt
+          git clone https://github.com/v2fly/geoip.git compiler_ip
+          cd compiler_ip
+          go mod download
+          cp ../external_whitelist_ip.txt ip_list.txt
+          cat <<EOF > config.json
+          {
+            "input": [
+              {
+                "type": "text",
+                "action": "add",
+                "args": {
+                  "name": "whitelist-ru",
+                  "uri": "ip_list.txt"
+                }
+              }
+            ],
+            "output": [
+              {
+                "type": "v2rayGeoIPDat",
+                "action": "output",
+                "args": {
+                  "outputDir": "./",
+                  "outputName": "geoip-ru.dat"
+                }
+              }
+            ]
+          }
+          EOF
+          go run ./ -c config.json
+          cp geoip-ru.dat ../geoip-ru.dat
+          cd ..
+          rm -rf compiler_ip external_whitelist_ip.txt
+
+      - name: Commit and push changes to root
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add geosite-ru.dat geoip-ru.dat
+          git commit -m "Auto-build geo-files" || echo "No changes to commit"
+          git push
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --cleanup-tag -y || true
+          gh release create latest geosite-ru.dat geoip-ru.dat --title "Latest Geo Files" --generate-notes
