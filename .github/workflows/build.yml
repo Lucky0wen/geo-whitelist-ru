@@ -25,14 +25,13 @@ jobs:
 
       - name: Build geosite-ru.dat
         run: |
-          curl -s -o external_whitelist.txt https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/refs/heads/main/whitelist.txt
           git clone https://github.com/v2fly/domain-list-community.git compiler
           cd compiler
-          cp ../external_whitelist.txt data/whitelist-ru
+          cp ../ru-whitelist-sites.txt data/geo-ru-whitelist-sites
           go run main.go
           cp dlc.dat ../geosite-ru.dat
           cd ..
-          rm -rf compiler external_whitelist.txt
+          rm -rf compiler
 
       - name: Build geoip-ru.dat
         run: |
